@@ -14,10 +14,15 @@ extern "C" int main(int argc, char* argv[])
 		case ExitReason::UserAction:
 			return 0;
 		case ExitReason::Error:
-			cout << "Press enter to restart" << endl;
+			cout << "-------------------------------" << endl
+			     << "Press enter to restart"          << endl
+			     << "-------------------------------" << endl;
+			cin.get();
 			break;
 		case ExitReason::Restart:
-			cout << "Restarting engine" << endl;
+			cout << "-------------------------------" << endl
+			     << "Restarting engine"               << endl
+			     << "-------------------------------" << endl;
 			break;
 		}
 	}
