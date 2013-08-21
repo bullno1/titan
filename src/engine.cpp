@@ -53,9 +53,8 @@ namespace MainSensor
 	};
 }
 
-inline void writeSeparator()
-{
-	cout << "-------------------------------------" << endl;
+namespace {
+	bool windowOpened = false;
 }
 
 class Init
@@ -97,9 +96,9 @@ public:
 
 void openWindow(const char* title, int width, int height)
 {
-	if((SDL_WasInit(0) & (SDL_INIT_TIMER | SDL_INIT_VIDEO)) == 0)
+	if((SDL_WasInit(0) & (SDL_INIT_VIDEO)) == 0)
 	{
-		SDL_Init(SDL_INIT_TIMER | SDL_INIT_VIDEO);
+		SDL_Init(SDL_INIT_VIDEO);
 		SDL_GL_SetAttribute(SDL_GL_RED_SIZE, 8);
 		SDL_GL_SetAttribute(SDL_GL_GREEN_SIZE, 8);
 		SDL_GL_SetAttribute(SDL_GL_BLUE_SIZE, 8);
@@ -112,11 +111,15 @@ void openWindow(const char* title, int width, int height)
 	SDL_WM_SetCaption(title, 0);
 	AKUDetectGfxContext();
 	AKUSetScreenSize(width, height);
+
+	windowOpened = true;
 }
 
 void closeWindow()
 {
 	AKUReleaseGfxContext();
+
+	windowOpened = false;
 }
 
 void handleKeyboardEvent(SDL_KeyboardEvent event, bool down)
@@ -169,21 +172,24 @@ void injectInput(SDL_Event event)
 	}
 }
 
+void InitSDL()
+{
+	SDL_Init(SDL_INIT_VIDEO);
+}
+
 ExitReason::Enum engineMain(int argc, char* argv[])
 {
-	writeSeparator();
-	cout << "Initializing Titan" << endl;
-	writeSeparator();
+	cout << "-------------------------------" << endl
+	     << "Initializing Titan" << endl
+	     << "-------------------------------" << endl;
 
-	ExitReason::Enum exitReason = ExitReason::Error;
-	bool running = true;
+	Init sdl(InitSDL, SDL_Quit);
 
-	SDL_Init(SDL_INIT_VIDEO);
-
+	//Initialize AKU
 	AKUContext context;
-
 	AKUSetArgv(argv);
 
+	//Initialize AKU subsystems
 	Init util(AKUInitializeUtil, AKUFinalizeUtil);
 	Init sim(AKUInitializeSim, AKUFinalizeSim);
 	Init chipmunk(AKUInitializeChipmunk, AKUFinalizeChipmunk);
@@ -192,17 +198,23 @@ ExitReason::Enum engineMain(int argc, char* argv[])
 	Init httpClient(AKUInitializeHttpClient, AKUFinalizeHttpClient);
 	AKUInitializeUntz();
 
+	//Initialize Lua libraries
 	AKUExtLoadLuacrypto();
 	AKUExtLoadLuacurl();
 	AKUExtLoadLuafilesystem();
 	AKUExtLoadLuasocket();
 	AKUExtLoadLuasql();
+	AKURunBytecode(moai_lua, moai_lua_SIZE);
 
+	//Register host addons
 	REGISTER_LUA_CLASS(Titan);
+	AKUSetFunc_OpenWindow(openWindow);
 
+	//Initialize input
 	AKUSetInputConfigurationName("AKUTitan");
 	AKUReserveInputDevices(InputDevice::Count);
 
+	//Main input device
 	AKUSetInputDevice(InputDevice::Main, "device");
 	AKUReserveInputDeviceSensors(InputDevice::Main, MainSensor::Count);
 	AKUSetInputDeviceKeyboard(InputDevice::Main, MainSensor::RawKeyboard, "keyboard");
@@ -213,12 +225,19 @@ ExitReason::Enum engineMain(int argc, char* argv[])
 	AKUSetInputDeviceButton(InputDevice::Main, MainSensor::MouseMiddle, "mouseMiddle");
 	AKUSetInputDeviceButton(InputDevice::Main, MainSensor::MouseRight, "mouseRight");
 
-	AKURunBytecode(moai_lua, moai_lua_SIZE);
-
-	AKUSetFunc_OpenWindow(openWindow);
-
+	//Run main script
 	AKURunScript("main.lua");
 
+	if(!windowOpened)
+	{
+	    cout << "-------------------------------" << endl
+		     << "Failed to create render window" << endl
+			 << "-------------------------------" << endl;
+		return ExitReason::Error;
+	}
+
+	//Main loop
+	bool running = true;
 	Titan& titan = Titan::Get();
 	while(titan.Update() && running)
 	{
@@ -248,6 +267,5 @@ ExitReason::Enum engineMain(int argc, char* argv[])
 		SDL_GL_SwapBuffers();
 	}
 
-	SDL_Quit();
 	return ExitReason::Restart;
 }
