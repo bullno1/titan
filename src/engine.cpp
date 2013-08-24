@@ -78,14 +78,14 @@ private:
 	ShutdownFunc mShutdownFunc;
 };
 
-class AKUContext
+class AKUContextWrapper
 {
 public:
-	AKUContext()
+	AKUContextWrapper()
 		:mContextId(AKUCreateContext())
 	{}
 
-	~AKUContext()
+	~AKUContextWrapper()
 	{
 		AKUDeleteContext(mContextId);
 		AKUFinalize();
@@ -186,7 +186,7 @@ ExitReason::Enum engineMain(int argc, char* argv[])
 	Init sdl(InitSDL, SDL_Quit);
 
 	//Initialize AKU
-	AKUContext context;
+	AKUContextWrapper context;
 	AKUSetArgv(argv);
 
 	//Initialize AKU subsystems
