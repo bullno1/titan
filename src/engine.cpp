@@ -140,7 +140,7 @@ void closeWindow()
 
 void handleKey(GLFWwindow* window, int keycode, int scancode, int action, int modifier)
 {
-	if((modifier == GLFW_PRESS) && (keycode == GLFW_KEY_R) && ((modifier & GLFW_MOD_CONTROL) > 0))
+	if((action == GLFW_PRESS) && (keycode == GLFW_KEY_R) && ((modifier & GLFW_MOD_CONTROL) > 0))
 	{
 		closeWindow();
 		exitReason = ExitReason::Restart;
@@ -162,6 +162,7 @@ void openWindow(const char* title, int width, int height)
 {
 	if(window) return;
 
+	glfwWindowHint(GLFW_RESIZABLE, GL_FALSE);
 	window = glfwCreateWindow(width, height, title, NULL, NULL);
 	if(windowX > 0 && windowY > 0)
 	{
