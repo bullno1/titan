@@ -1,10 +1,9 @@
 #include <iostream>
-#include <SDL.h>
 #include "engine.h"
 
 using namespace std;
 
-extern "C" int main(int argc, char* argv[])
+int main(int argc, char* argv[])
 {
 	while(true)
 	{

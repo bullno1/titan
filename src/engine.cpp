@@ -14,8 +14,7 @@
 #include "engine.h"
 #include "Titan.h"
 
-#include <SDL.h>
-#include <SDL_opengl.h>
+#include <GLFW/glfw3.h>
 
 using namespace std;
 
@@ -54,7 +53,11 @@ namespace MainSensor
 }
 
 namespace {
-	bool windowOpened = false;
+	GLFWwindow* window = NULL;
+	ExitReason::Enum exitReason;
+	bool running;
+	int windowX = -1;
+	int windowY = -1;
 }
 
 class Init
@@ -94,87 +97,93 @@ public:
 	AKUContextID mContextId;
 };
 
-void openWindow(const char* title, int width, int height)
+void handleMouseMove(GLFWwindow* window, double x, double y)
 {
-	if((SDL_WasInit(0) & (SDL_INIT_VIDEO)) == 0)
+	AKUEnqueuePointerEvent(InputDevice::Main, MainSensor::Mouse, (int)x, (int)y);
+}
+
+void handleMouseButton(GLFWwindow* window, int button, int action, int mod)
+{
+	switch(button)
 	{
-		SDL_Init(SDL_INIT_VIDEO);
-		SDL_GL_SetAttribute(SDL_GL_RED_SIZE, 8);
-		SDL_GL_SetAttribute(SDL_GL_GREEN_SIZE, 8);
-		SDL_GL_SetAttribute(SDL_GL_BLUE_SIZE, 8);
-		SDL_GL_SetAttribute(SDL_GL_ALPHA_SIZE, 8);
-		SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 8);
-		SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
+	case GLFW_MOUSE_BUTTON_LEFT:
+		AKUEnqueueButtonEvent(InputDevice::Main, MainSensor::MouseLeft, action == GLFW_PRESS);
+		break;
+	case GLFW_MOUSE_BUTTON_MIDDLE:
+		AKUEnqueueButtonEvent(InputDevice::Main, MainSensor::MouseMiddle, action == GLFW_PRESS);
+		break;
+	case GLFW_MOUSE_BUTTON_RIGHT:
+		AKUEnqueueButtonEvent(InputDevice::Main, MainSensor::MouseRight, action == GLFW_PRESS);
+		break;
 	}
+}
 
-	SDL_SetVideoMode(width, height, 32, SDL_OPENGL);
-	SDL_WM_SetCaption(title, 0);
-	AKUDetectGfxContext();
-	AKUSetScreenSize(width, height);
+void handleTextInput(GLFWwindow* window, unsigned int character)
+{
+	AKUEnqueueKeyboardEvent(InputDevice::Main, MainSensor::TextInput, character, true);
+	AKUEnqueueKeyboardEvent(InputDevice::Main, MainSensor::TextInput, character, false);
+}
 
-	windowOpened = true;
+void handleScroll(GLFWwindow* window, double x, double y)
+{
+	AKUEnqueueWheelEvent(InputDevice::Main, MainSensor::RawKeyboard, (float)y);
 }
 
 void closeWindow()
 {
 	AKUReleaseGfxContext();
-
-	windowOpened = false;
+	glfwGetWindowPos(window, &windowX, &windowY);
+	glfwDestroyWindow(window);
+	window = NULL;
+	running = false;
 }
 
-void handleKeyboardEvent(SDL_KeyboardEvent event, bool down)
+void handleKey(GLFWwindow* window, int keycode, int scancode, int action, int modifier)
 {
-	AKUEnqueueKeyboardEvent(InputDevice::Main, MainSensor::RawKeyboard, event.keysym.sym, down);
-	AKUEnqueueKeyboardEvent(InputDevice::Main, MainSensor::TextInput, event.keysym.unicode, down);
-}
-
-void handleMouseButtonEvent(Uint8 button, bool down)
-{
-	switch(button)
+	if((modifier == GLFW_PRESS) && (keycode == GLFW_KEY_R) && ((modifier & GLFW_MOD_CONTROL) > 0))
 	{
-	case SDL_BUTTON_LEFT:
-		AKUEnqueueButtonEvent(InputDevice::Main, MainSensor::MouseLeft, down);
-		break;
-	case SDL_BUTTON_MIDDLE:
-		AKUEnqueueButtonEvent(InputDevice::Main, MainSensor::MouseMiddle, down);
-		break;
-	case SDL_BUTTON_RIGHT:
-		AKUEnqueueButtonEvent(InputDevice::Main, MainSensor::MouseRight, down);
-		break;
-	case SDL_BUTTON_WHEELDOWN:
-		AKUEnqueueWheelEvent(InputDevice::Main, MainSensor::MouseWheel, -1.0f);
-		break;
-	case SDL_BUTTON_WHEELUP:
-		AKUEnqueueWheelEvent(InputDevice::Main, MainSensor::MouseWheel,  1.0f);
-		break;
+		closeWindow();
+		exitReason = ExitReason::Restart;
+	}
+	else
+	{
+		if(action != GLFW_REPEAT)
+			AKUEnqueueKeyboardEvent(InputDevice::Main, MainSensor::RawKeyboard, keycode, action == GLFW_PRESS);
 	}
 }
 
-void injectInput(SDL_Event event)
+void handleClose(GLFWwindow* window)
 {
-	switch(event.type)
-	{
-	case SDL_KEYDOWN:
-		handleKeyboardEvent(event.key, true);
-		break;
-	case SDL_KEYUP:
-		handleKeyboardEvent(event.key, false);
-		break;
-	case SDL_MOUSEBUTTONDOWN:
-		handleMouseButtonEvent(event.button.button, true);
-		break;
-	case SDL_MOUSEBUTTONUP:
-		handleMouseButtonEvent(event.button.button, false);
-		break;
-	case SDL_MOUSEMOTION:
-		AKUEnqueuePointerEvent(InputDevice::Main, MainSensor::Mouse, event.motion.x, event.motion.y);
-		break;
-	}
+	closeWindow();
+	exitReason = ExitReason::UserAction;
 }
 
-void InitSDL()
+void openWindow(const char* title, int width, int height)
 {
-	SDL_Init(SDL_INIT_VIDEO);
+	if(window) return;
+
+	window = glfwCreateWindow(width, height, title, NULL, NULL);
+	if(windowX > 0 && windowY > 0)
+	{
+		glfwSetWindowPos(window, windowX, windowY);
+	}
+
+	glfwSwapInterval(1);
+	glfwSetCursorPosCallback(window, handleMouseMove);
+	glfwSetCharCallback(window, handleTextInput);
+	glfwSetMouseButtonCallback(window, handleMouseButton);
+	glfwSetScrollCallback(window, handleScroll);
+	glfwSetKeyCallback(window, handleKey);
+	glfwSetWindowCloseCallback(window, handleClose);
+
+	glfwMakeContextCurrent(window);
+	AKUDetectGfxContext();
+	AKUSetScreenSize(width, height);
+}
+
+void InitGLFW()
+{
+	glfwInit();
 }
 
 ExitReason::Enum engineMain(int argc, char* argv[])
@@ -183,7 +192,7 @@ ExitReason::Enum engineMain(int argc, char* argv[])
 	     << "Initializing Titan" << endl
 	     << "-------------------------------" << endl;
 
-	Init sdl(InitSDL, SDL_Quit);
+	Init glfw(InitGLFW, glfwTerminate);
 
 	//Initialize AKU
 	AKUContextWrapper context;
@@ -204,7 +213,7 @@ ExitReason::Enum engineMain(int argc, char* argv[])
 	AKUExtLoadLuafilesystem();
 	AKUExtLoadLuasocket();
 	AKUExtLoadLuasql();
-	AKURunBytecode(moai_lua, moai_lua_SIZE);
+	AKURunData(moai_lua, moai_lua_SIZE, AKU_DATA_STRING, AKU_DATA_ZIPPED);
 
 	//Register host addons
 	REGISTER_LUA_CLASS(Titan);
@@ -228,7 +237,7 @@ ExitReason::Enum engineMain(int argc, char* argv[])
 	//Run main script
 	AKURunScript("main.lua");
 
-	if(!windowOpened)
+	if(!window)
 	{
 	    cout << "-------------------------------" << endl
 		     << "Failed to create render window" << endl
@@ -237,35 +246,18 @@ ExitReason::Enum engineMain(int argc, char* argv[])
 	}
 
 	//Main loop
-	bool running = true;
+	running = true;
 	Titan& titan = Titan::Get();
+	exitReason = ExitReason::Restart;
 	while(titan.Update() && running)
 	{
-		SDL_Event event;
-		while(SDL_PollEvent(&event))
-		{
-			switch(event.type)
-			{
-			case SDL_QUIT:
-				closeWindow();
-				return ExitReason::UserAction;
-			case SDL_KEYDOWN:
-				if(event.key.keysym.sym == SDLK_r && (SDL_GetModState() & KMOD_CTRL))
-				{
-					closeWindow();
-					return ExitReason::Restart;
-				}
-				break;
-			}
-
-			injectInput(event);
-		}
-
 		AKUUpdate();
 		glClear(GL_COLOR_BUFFER_BIT);
 		AKURender();
-		SDL_GL_SwapBuffers();
+		glfwSwapBuffers(window);
+
+		glfwPollEvents();
 	}
 
-	return ExitReason::Restart;
+	return exitReason;
 }

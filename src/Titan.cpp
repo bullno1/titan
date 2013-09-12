@@ -1,5 +1,4 @@
 #include "Titan.h"
-#include <SDL_keyboard.h>
 
 using namespace FW;
 
@@ -25,7 +24,6 @@ void Titan::RegisterLuaClass(MOAILuaState& state)
 	state.SetField(-1, "FILE_ACTION_MODIFY", Actions::Modified);
 
 	luaL_Reg regTable[] = {
-		{"setTextInputEnabled", _setTextInputEnabled},
 		{"restart", _restart},
 		{"addWatch", _addWatch},
 		{"removeWatch", _removeWatch},
@@ -46,7 +44,7 @@ void Titan::handleFileAction(WatchID watchId, const String& dir, const String& f
 	WatchIDMap::iterator itr = mWatchFunctions.find(watchId);
 	if(itr != mWatchFunctions.end())
 	{
-		MOAILuaStateHandle state = itr->second->GetSelf();
+		MOAIScopedLuaState state = itr->second->GetSelf();
 		itr->second->PushRef(state);
 		state.Push(watchId);
 		state.Push(dir.c_str());
@@ -54,14 +52,6 @@ void Titan::handleFileAction(WatchID watchId, const String& dir, const String& f
 		state.Push(action);
 		state.DebugCall(4, 0);
 	}
-}
-
-int Titan::_setTextInputEnabled(lua_State* L)
-{
-	MOAILuaState state(L);
-	bool enabled = state.GetValue<bool>(-1, false);
-	SDL_EnableUNICODE(enabled ? 1 : 0);
-	return 0;
 }
 
 int Titan::_restart(lua_State* L)

@@ -27,7 +27,6 @@ private:
 	typedef unordered_map<FW::WatchID, MOAILuaRef*> WatchIDMap;
 	WatchIDMap mWatchFunctions;
 
-	static int _setTextInputEnabled(lua_State* L);
 	static int _restart(lua_State* L);
 	static int _addWatch(lua_State* L);
 	static int _removeWatch(lua_State* L);
