@@ -29,20 +29,19 @@ solution "Titan"
 			moaidir .. "/src/config-default",
 			moaidir .. "/src/lua-headers"
 		}
-		libdirs {
-			moaidir .. "/libs"
-		}
 		files {
 			"src/*.h",
 			"src/*.cpp"
 		}
 		links {
 			"FileWatcher",
-			"SDL",
-			"SDLmain"
+			"glfw3"
 		}
 
 		configuration "windows"
+			libdirs {
+				moaidir .. "/vs2010/bin/Win32/Release-Lua-5.1"
+			}
 			defines {
 				"WIN32",
 				"_CONSOLE"
@@ -73,7 +72,7 @@ solution "Titan"
 				"libpng",
 				"libssl",
 				"libvorbis",
-				"lua-5.1.3",
+				"lua-lib-5.1",
 				"luaext",
 				"mongoose",
 				"sfmt",
