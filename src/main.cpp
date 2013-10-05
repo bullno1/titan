@@ -1,14 +1,14 @@
 #include <iostream>
-#include "engine.h"
+#include "sim.h"
 
 using namespace std;
 
 int main(int argc, char* argv[])
 {
+	Sim* sim = createSim(argc, argv);
 	while(true)
 	{
-		ExitReason::Enum exitReason = engineMain(argc, argv);
-		switch(exitReason)
+		switch(runSim(sim))
 		{
 		case ExitReason::UserAction:
 			return 0;
@@ -25,5 +25,6 @@ int main(int argc, char* argv[])
 			break;
 		}
 	}
+	destroySim(sim);
 	return 0;
 }

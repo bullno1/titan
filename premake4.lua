@@ -35,7 +35,7 @@ solution "Titan"
 		}
 		links {
 			"FileWatcher",
-			"glfw3"
+			"SDL2"
 		}
 
 		configuration "windows"
