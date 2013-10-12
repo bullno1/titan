@@ -223,11 +223,14 @@ private:
 		case SDL_MOUSEMOTION:
 			AKUEnqueuePointerEvent(InputDevice::Main, MainSensor::Mouse, (int)event.motion.x, (int)event.motion.y);
 			break;
+		case SDL_MOUSEBUTTONUP:
+			handleMouseButton(event.button, false);
+			break;
 		case SDL_MOUSEBUTTONDOWN:
-			handleMouseButton(event.button);
+			handleMouseButton(event.button, true);
 			break;
 		case SDL_MOUSEWHEEL:
-			AKUEnqueueWheelEvent(InputDevice::Main, MainSensor::RawKeyboard, (float)event.wheel.y);
+			AKUEnqueueWheelEvent(InputDevice::Main, MainSensor::MouseWheel, (float)event.wheel.y);
 			break;
 		case SDL_KEYDOWN:
 			handleKey(event.key, true);
@@ -241,9 +244,8 @@ private:
 		}
 	}
 
-	void handleMouseButton(SDL_MouseButtonEvent event)
+	void handleMouseButton(SDL_MouseButtonEvent event, bool down)
 	{
-		bool down = event.state == SDL_PRESSED;
 		switch(event.button)
 		{
 		case SDL_BUTTON_LEFT:
