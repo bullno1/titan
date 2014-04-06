@@ -1,22 +1,18 @@
-#include <moai-core/host.h>
-#include <moai-sim/host.h>
-#include <moai-chipmunk/host.h>
-#include <moai-box2d/host.h>
-#include <moai-http-client/host.h>
-#include <moai-http-server/host.h>
-#include <moai-luaext/host.h>
-#include <moai-untz/host.h>
-#include <moai-util/host.h>
-#include <moai-audiosampler/AKU-audiosampler.h>
-#include <lua-headers/moai_lua.h>
 #include <iostream>
-
-#include "sim.h"
-#include "Titan.h"
-
+#include <exception>
+#define HAVE_M_PI
 #include <SDL.h>
 #include <SDL_opengl.h>
 #include <SDL_keycode.h>
+#include <moai-core/host.h>
+#include <host-modules/aku_modules.h>
+extern "C"
+{
+	#include <lua.h>
+}
+
+#include "sim.h"
+#include "Titan.h"
 
 using namespace std;
 
@@ -81,12 +77,30 @@ public:
 	~AKUContextWrapper()
 	{
 		AKUDeleteContext(mContextId);
-		AKUFinalize();
 	}
 
 private:
 	AKUContextID mContextId;
 };
+
+class LuaPanicException: public std::exception
+{
+public:
+	LuaPanicException(STLString errorMsg)
+		:mErrorMsg(errorMsg)
+	{}
+
+	virtual ~LuaPanicException() {}
+
+	virtual const char* what() const throw()
+	{
+		return mErrorMsg.c_str();
+	}
+
+private:
+	STLString mErrorMsg;
+};
+
 
 class Sim
 {
@@ -98,6 +112,8 @@ public:
 		,mGLContext(NULL)
 		,mWindowX(SDL_WINDOWPOS_UNDEFINED)
 		,mWindowY(SDL_WINDOWPOS_UNDEFINED)
+		,mAppInitialize(AKUAppInitialize, AKUAppFinalize)
+		,mModulesAppInitialize(AKUModulesAppInitialize, AKUModulesAppFinalize)
 	{
 		SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS);
 		SDL_GL_SetAttribute(SDL_GL_RED_SIZE, 8);
@@ -109,7 +125,6 @@ public:
 	~Sim()
 	{
 		SDL_Quit();
-		AKUFinalize();
 	}
 
 	ExitReason::Enum run()
@@ -118,30 +133,15 @@ public:
 			 << "Initializing Titan" << endl
 			 << "-------------------------------" << endl;
 
-		//Initialize AKU
+		//Initialize context
 		AKUContextWrapper<Sim> context(this);
 		AKUSetArgv(mArgv);
 
-		//Initialize AKU subsystems
-		Init sim(AKUInitializeSim, AKUFinalizeSim);
-		Init util(AKUInitializeUtil, AKUFinalizeUtil);
-		Init chipmunk(AKUInitializeChipmunk, AKUFinalizeChipmunk);
-		Init box2d(AKUInitializeBox2D, AKUFinalizeBox2D);
-		Init httpServer(AKUInitializeHttpServer, AKUFinalizeHttpServer);
-		Init httpClient(AKUInitializeHttpClient, AKUFinalizeHttpClient);
-		AKUInitializeUntz();
-
-		//Initialize Lua libraries
-		AKUExtLoadLuacrypto();
-		AKUExtLoadLuacurl();
-		AKUExtLoadLuafilesystem();
-		AKUExtLoadLuasocket();
-		AKUExtLoadLuasql();
-		AKURunData(moai_lua, moai_lua_SIZE, AKU_DATA_STRING, AKU_DATA_ZIPPED);
+		AKUModulesContextInitialize();
+		AKUModulesRunLuaAPIWrapper();
 
 		//Register host addons
 		REGISTER_LUA_CLASS(Titan);
-		AKUSetFunc_OpenWindow(thunk_openWindow);
 
 		//Initialize input
 		AKUSetInputConfigurationName("AKUTitan");
@@ -158,8 +158,29 @@ public:
 		AKUSetInputDeviceButton(InputDevice::Main, MainSensor::MouseMiddle, "mouseMiddle");
 		AKUSetInputDeviceButton(InputDevice::Main, MainSensor::MouseRight, "mouseRight");
 
+		//Register callbacks
+		AKUSetFunc_OpenWindow(thunk_openWindow);
+		AKUSetFunc_ShowCursor(showCursor);
+		AKUSetFunc_HideCursor(hideCursor);
+
 		//Run main script
-		AKURunScript("main.lua");
+		lua_atpanic(AKUGetLuaState(), onLuaPanic);//Prevent lua from quitting in panic
+		AKURunString("MOAISim.setTraceback(debug.traceback)");//Default trace handler
+
+		try {
+#ifdef RELEASE_BUILD
+			AKUMountVirtualDirectory(".", mArgv[0]);//Mount embeded data
+			AKURunScript("release.luac");
+			AKURunScript("main.luac");
+#else
+			AKURunScript("develop.lua");
+			AKURunScript("main.lua");
+#endif
+		}
+		catch(LuaPanicException e)
+		{
+			cout << "Error in script: " << e.what() << endl;
+		}
 
 		if(!mWindow)
 		{
@@ -173,16 +194,30 @@ public:
 		mRunning = true;
 		Titan& titan = Titan::Get();
 		mExitReason = ExitReason::Restart;
-		while(titan.Update() && mRunning)
-		{
-			SDL_Event event;
-			while(SDL_PollEvent(&event))
-				processEvent(event);
 
-			AKUUpdate();
-			glClear(GL_COLOR_BUFFER_BIT);
-			AKURender();
-			SDL_GL_SwapWindow(mWindow);
+		try
+		{
+			while(titan.Update() && mRunning)
+			{
+				SDL_Event event;
+				while(SDL_PollEvent(&event))
+					processEvent(event);
+
+				AKUModulesUpdate();
+				glClear(GL_COLOR_BUFFER_BIT);
+				AKURender();
+				SDL_GL_SwapWindow(mWindow);
+			}
+		}
+		catch(exception e)
+		{
+			cout << "Exception: " << e.what() << endl;
+			return ExitReason::Error;
+		}
+		catch(...)
+		{
+			cout << "Unknown exception" << endl;
+			return ExitReason::Error;
 		}
 
 		return mExitReason;
@@ -285,6 +320,29 @@ private:
 	{
 		static_cast<Sim*>(AKUGetUserdata())->openWindow(title, width, height);
 	}
+
+	static void showCursor()
+	{
+		SDL_ShowCursor(1);
+	}
+
+	static void hideCursor()
+	{
+		SDL_ShowCursor(0);
+	}
+
+	static int onLuaPanic(lua_State* L)
+	{
+		MOAILuaState state ( L );
+		STLString errorMsg = lua_tostring(L, -1);
+		throw LuaPanicException(errorMsg);
+
+		return 0;
+	}
+
+	//Initialize AKU and plugins
+	Init mAppInitialize;
+	Init mModulesAppInitialize;
 
 	int mArgc;
 	char** mArgv;

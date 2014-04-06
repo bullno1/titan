@@ -67,7 +67,7 @@ int Titan::_addWatch(lua_State* L)
 
 	Titan& titan = Get();
 	WatchID watchId = titan.mFileWatcher.addWatch(state.GetValue<cc8*>(1, "."), &titan, true);
-	MOAILuaRef* ref = new MOAILuaRef;
+	MOAILuaStrongRef* ref = new MOAILuaStrongRef;
 	ref->SetStrongRef(state, 2);
 	titan.mWatchFunctions.insert(std::make_pair(watchId, ref));
 
