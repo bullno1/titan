@@ -337,7 +337,11 @@ private:
 		}
 		else
 		{
-			AKUEnqueueKeyboardEvent(InputDevice::Main, MainSensor::RawKeyboard, event.keysym.sym, down);
+			//Clamp keycode
+			int key = event.keysym.sym;
+			if (key & 0x40000000) key = (key & 0x3FFFFFFF) + 256;
+
+			AKUEnqueueKeyboardEvent(InputDevice::Main, MainSensor::RawKeyboard, key, down);
 		}
 	}
 
