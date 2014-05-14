@@ -37,6 +37,8 @@ if [ ! -d build ]; then
 	-DPLUGIN_DIR=$PROJECT_DIR/plugins \
 	-DPLUGIN_MOAI-ENET=1 \
 	$MOAI_ROOT/cmake
+else
+	cd build
 fi
 
 make $*
