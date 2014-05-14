@@ -1,0 +1,3 @@
+[submodule "plugins/moai-enet"]
+	path = plugins/moai-enet
+	url = git@tapbat.com:bachlv/moai-enet
