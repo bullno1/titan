@@ -4,28 +4,20 @@
 
 using namespace std;
 
-#ifdef RELEASE_BUILD
-int main(int argc, char* argv[])
-{
-	freopen("stdout.log", "w", stdout);
-	freopen("stderr.log", "w", stderr);
-	Sim * sim = createSim(argc, argv);
-	runSim(sim);
-	destroySim(sim);
-	return 0;
-}
-#else
 int main(int argc, char* argv[])
 {
 	Sim* sim = createSim(argc, argv);
 
 	bool running = true;
+	int exitCode = 0;
+
 	while(running)
 	{
 		switch(runSim(sim))
 		{
-		case ExitReason::UserAction:
+		case ExitReason::Normal:
 			running = false;
+			exitCode = 0;
 			break;
 		case ExitReason::Error:
 			{
@@ -40,10 +32,13 @@ int main(int argc, char* argv[])
 		case ExitReason::Restart:
 			cout << "Restarting engine" << endl;
 			break;
+		case ExitReason::Abort:
+			running = false;
+			exitCode = 1;
+			break;
 		}
 	}
 
 	destroySim(sim);
-	return 0;
+	return exitCode;
 }
-#endif

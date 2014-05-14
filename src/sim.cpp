@@ -32,6 +32,7 @@ namespace MainSensor
 	{
 		RawKeyboard,
 		TextInput,
+		Touch,
 
 		Mouse,
 		MouseWheel,
@@ -157,6 +158,7 @@ public:
 		AKUSetInputDeviceButton(InputDevice::Main, MainSensor::MouseLeft, "mouseLeft");
 		AKUSetInputDeviceButton(InputDevice::Main, MainSensor::MouseMiddle, "mouseMiddle");
 		AKUSetInputDeviceButton(InputDevice::Main, MainSensor::MouseRight, "mouseRight");
+		AKUSetInputDeviceTouch(InputDevice::Main, MainSensor::Touch, "touch");
 
 		//Register callbacks
 		AKUSetFunc_OpenWindow(thunk_openWindow);
@@ -165,21 +167,45 @@ public:
 
 		//Run main script
 		lua_atpanic(AKUGetLuaState(), onLuaPanic);//Prevent lua from quitting in panic
-		AKURunString("MOAISim.setTraceback(debug.traceback)");//Default trace handler
+		AKURunString("MOAISim.setTraceback(function() end)");//Default trace handler
 
-		try {
-#ifdef RELEASE_BUILD
-			AKUMountVirtualDirectory(".", mArgv[0]);//Mount embeded data
-			AKURunScript("release.luac");
-			AKURunScript("main.luac");
-#else
-			AKURunScript("develop.lua");
-			AKURunScript("main.lua");
-#endif
+		bool toolMode = false;
+
+		try
+		{
+			if(mArgc < 2)
+			{
+				AKURunScript("main.lua");
+			}
+			else
+			{
+				for(int i = 1; i < mArgc; ++i)
+				{
+					const char* arg = mArgv[i];
+					if(strcmp(arg, "-s") == 0 && (++i < mArgc))
+					{
+						const char* script = mArgv[i];
+						AKURunString(script);
+					}
+					else if(strcmp(arg, "-t") == 0)
+					{
+						toolMode = true;
+					}
+					else
+					{
+						AKURunScript(arg);
+					}
+				}
+			}
 		}
 		catch(LuaPanicException e)
 		{
 			cout << "Error in script: " << e.what() << endl;
+		}
+
+		if(toolMode)
+		{
+			return ExitReason::Normal;
 		}
 
 		if(!mWindow)
@@ -257,6 +283,10 @@ private:
 		{
 		case SDL_MOUSEMOTION:
 			AKUEnqueuePointerEvent(InputDevice::Main, MainSensor::Mouse, (int)event.motion.x, (int)event.motion.y);
+			if(event.motion.state & SDL_BUTTON_LMASK > 0)
+			{
+				AKUEnqueueTouchEvent(InputDevice::Main, MainSensor::Touch, 0, true, event.motion.x, event.motion.y);
+			}
 			break;
 		case SDL_MOUSEBUTTONUP:
 			handleMouseButton(event.button, false);
@@ -285,6 +315,7 @@ private:
 		{
 		case SDL_BUTTON_LEFT:
 			AKUEnqueueButtonEvent(InputDevice::Main, MainSensor::MouseLeft, down);
+			AKUEnqueueTouchEvent(InputDevice::Main, MainSensor::Touch, 0, down, event.x, event.y);
 			break;
 		case SDL_BUTTON_MIDDLE:
 			AKUEnqueueButtonEvent(InputDevice::Main, MainSensor::MouseMiddle, down);
@@ -313,7 +344,7 @@ private:
 	void handleQuit()
 	{
 		closeWindow();
-		mExitReason = ExitReason::UserAction;
+		mExitReason = ExitReason::Normal;
 	}
 
 	static void thunk_openWindow(const char* title, int width, int height)

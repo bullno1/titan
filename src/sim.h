@@ -4,9 +4,10 @@ namespace ExitReason
 {
 	enum Enum
 	{
-		UserAction,
+		Normal,
 		Error,
 		Restart,
+		Abort,
 
 		Count
 	};
