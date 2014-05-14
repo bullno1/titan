@@ -1,10 +1,10 @@
 cmake_minimum_required(VERSION 2.8.8)
 
-add_subdirectory(deps)
+add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../deps" "${CMAKE_CURRENT_BINARY_DIR}/deps")
 
 project(titan)
 
-set(HOST_ROOT "${CMAKE_CURRENT_SOURCE_DIR}")
+set(HOST_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../")
 
 set(TITAN_SRC
 	${HOST_ROOT}/src/main.cpp
@@ -16,7 +16,6 @@ set (TITAN_INCLUDES
 	"${MOAI_ROOT}/src"
 	"${MOAI_ROOT}/src/moai-config"
 	"${MOAI_ROOT}/3rdparty/sdl2-2.0.0/include"
-	"${HOST_ROOT}/"
 )
 
 SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
