@@ -5,8 +5,9 @@ if [ -z $MOAI_ROOT ]; then
 	exit 1
 fi
 
-if [ ! -d build ]; then
+if [ ! -f build/Makefile ]; then
 	PROJECT_DIR=$(dirname $(readlink -f "$0"))
+	cd $PROJECT_DIR
 	mkdir build
 	cd build
 	cmake \
