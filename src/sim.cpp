@@ -230,7 +230,6 @@ public:
 					processEvent(event);
 
 				AKUModulesUpdate();
-				glClear(GL_COLOR_BUFFER_BIT);
 				AKURender();
 				SDL_GL_SwapWindow(mWindow);
 			}
