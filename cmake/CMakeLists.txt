@@ -1,7 +1,5 @@
 cmake_minimum_required(VERSION 2.8.8)
 
-add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../deps" "${CMAKE_CURRENT_BINARY_DIR}/deps")
-
 project(titan)
 
 set(HOST_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../")
@@ -9,7 +7,6 @@ set(HOST_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../")
 set(TITAN_SRC
 	${HOST_ROOT}/src/main.cpp
 	${HOST_ROOT}/src/sim.cpp
-	${HOST_ROOT}/src/Titan.cpp
 )
 
 set (TITAN_INCLUDES
@@ -22,7 +19,6 @@ SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
 include_directories(${TITAN_INCLUDES})
 add_executable(titan ${TITAN_SRC})
 target_link_libraries(titan 
-	FileWatcher
 	host-modules
 	moai-core
 	moai-util

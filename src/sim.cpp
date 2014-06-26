@@ -6,13 +6,15 @@
 #include <SDL_keycode.h>
 #include <moai-core/host.h>
 #include <host-modules/aku_modules.h>
+#include <moai-core/headers.h>
+#include <moai-sim/headers.h>
+
 extern "C"
 {
 	#include <lua.h>
 }
 
 #include "sim.h"
-#include "Titan.h"
 
 using namespace std;
 
@@ -102,7 +104,6 @@ private:
 	STLString mErrorMsg;
 };
 
-
 class Sim
 {
 public:
@@ -113,6 +114,7 @@ public:
 		,mGLContext(NULL)
 		,mWindowX(SDL_WINDOWPOS_UNDEFINED)
 		,mWindowY(SDL_WINDOWPOS_UNDEFINED)
+		,mViewScale(1.0f)
 		,mAppInitialize(AKUAppInitialize, AKUAppFinalize)
 		,mModulesAppInitialize(AKUModulesAppInitialize, AKUModulesAppFinalize)
 	{
@@ -121,6 +123,8 @@ public:
 		SDL_GL_SetAttribute(SDL_GL_GREEN_SIZE, 8);
 		SDL_GL_SetAttribute(SDL_GL_BLUE_SIZE, 8);
 		SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
+		SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 1);
+		SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, 2);
 	}
 
 	~Sim()
@@ -141,9 +145,6 @@ public:
 		AKUModulesContextInitialize();
 		AKUModulesRunLuaAPIWrapper();
 
-		//Register host addons
-		REGISTER_LUA_CLASS(Titan);
-
 		//Initialize input
 		AKUSetInputConfigurationName("AKUTitan");
 		AKUReserveInputDevices(InputDevice::Count);
@@ -161,9 +162,17 @@ public:
 		AKUSetInputDeviceTouch(InputDevice::Main, MainSensor::Touch, "touch");
 
 		//Register callbacks
-		AKUSetFunc_OpenWindow(thunk_openWindow);
 		AKUSetFunc_ShowCursor(showCursor);
 		AKUSetFunc_HideCursor(hideCursor);
+
+		//Register host's addon
+		luaL_Reg hostAddons[] = {
+			{ "restart", _restart },
+			{ "openWindow", _openWindow },
+			{ NULL, NULL }
+		};
+		luaL_register(AKUGetLuaState(), "Titan", hostAddons);
+		lua_pop(AKUGetLuaState(), 1);
 
 		//Run main script
 		lua_atpanic(AKUGetLuaState(), onLuaPanic);//Prevent lua from quitting in panic
@@ -218,12 +227,11 @@ public:
 
 		//Main loop
 		mRunning = true;
-		Titan& titan = Titan::Get();
 		mExitReason = ExitReason::Restart;
 
 		try
 		{
-			while(titan.Update() && mRunning)
+			while(mRunning)
 			{
 				SDL_Event event;
 				while(SDL_PollEvent(&event))
@@ -249,27 +257,35 @@ public:
 	}
 
 private:
-	void openWindow(const char* title, int width, int height)
+	void openWindow(const char* title, int deviceWidth, int deviceHeight, int dpi)
 	{
 		if(mWindow) return;
 
-		mWindow = SDL_CreateWindow(title, mWindowX, mWindowY, width, height, SDL_WINDOW_OPENGL);
+		mViewScale = 160.0f / (float)dpi;
+
+		int windowWidth = (int)((float)deviceWidth * mViewScale);
+		int windowHeight = (int)((float)deviceHeight * mViewScale);
+
+		mWindow = SDL_CreateWindow(title, mWindowX, mWindowY, windowWidth, windowHeight, SDL_WINDOW_OPENGL);
 		if(SDL_GL_SetSwapInterval(-1) < 0)
 			SDL_GL_SetSwapInterval(1);
 		mGLContext = SDL_GL_CreateContext(mWindow);
 
 		AKUDetectGfxContext();
-		AKUSetScreenSize(width, height);
+		AKUSetScreenSize(deviceWidth, deviceHeight);
+		AKUSetViewSize(deviceWidth, deviceHeight);
+		AKUSetScreenDpi(dpi);
+		MOAIGfxDevice::Get().SetBufferScale(mViewScale);
 	}
 
 	void closeWindow()
 	{
 		if(!mWindow) return;
 
-		AKUReleaseGfxContext();
-
-		SDL_GL_DeleteContext(mGLContext);
 		SDL_GetWindowPosition(mWindow, &mWindowX, &mWindowY);
+
+		AKUReleaseGfxContext();
+		SDL_GL_DeleteContext(mGLContext);
 		SDL_DestroyWindow(mWindow);
 		mWindow = NULL;
 		mGLContext = NULL;
@@ -281,10 +297,14 @@ private:
 		switch(event.type)
 		{
 		case SDL_MOUSEMOTION:
-			AKUEnqueuePointerEvent(InputDevice::Main, MainSensor::Mouse, (int)event.motion.x, (int)event.motion.y);
-			if(event.motion.state & SDL_BUTTON_LMASK > 0)
 			{
-				AKUEnqueueTouchEvent(InputDevice::Main, MainSensor::Touch, 0, true, event.motion.x, event.motion.y);
+				int x = (int)((float)event.motion.x / mViewScale);
+				int y = (int)((float)event.motion.y / mViewScale);
+				AKUEnqueuePointerEvent(InputDevice::Main, MainSensor::Mouse, x, y);
+				if((event.motion.state & SDL_BUTTON_LMASK) > 0)
+				{
+					AKUEnqueueTouchEvent(InputDevice::Main, MainSensor::Touch, 0, true, event.motion.x, event.motion.y);
+				}
 			}
 			break;
 		case SDL_MOUSEBUTTONUP:
@@ -310,11 +330,14 @@ private:
 
 	void handleMouseButton(SDL_MouseButtonEvent event, bool down)
 	{
+		int x = (int)((float)event.x / mViewScale);
+		int y = (int)((float)event.y / mViewScale);
+
 		switch(event.button)
 		{
 		case SDL_BUTTON_LEFT:
 			AKUEnqueueButtonEvent(InputDevice::Main, MainSensor::MouseLeft, down);
-			AKUEnqueueTouchEvent(InputDevice::Main, MainSensor::Touch, 0, down, event.x, event.y);
+			AKUEnqueueTouchEvent(InputDevice::Main, MainSensor::Touch, 0, down, x, y);
 			break;
 		case SDL_BUTTON_MIDDLE:
 			AKUEnqueueButtonEvent(InputDevice::Main, MainSensor::MouseMiddle, down);
@@ -350,11 +373,6 @@ private:
 		mExitReason = ExitReason::Normal;
 	}
 
-	static void thunk_openWindow(const char* title, int width, int height)
-	{
-		static_cast<Sim*>(AKUGetUserdata())->openWindow(title, width, height);
-	}
-
 	static void showCursor()
 	{
 		SDL_ShowCursor(1);
@@ -374,6 +392,34 @@ private:
 		return 0;
 	}
 
+	//Lua API
+	static int _restart(lua_State* L)
+	{
+		Sim* sim = static_cast<Sim*>(AKUGetUserdata());
+		sim->mRunning = false;
+		sim->mExitReason = ExitReason::Restart;
+
+		return 0;
+	}
+
+	static int _openWindow(lua_State* L)
+	{
+		MOAILuaState state(L);
+		if(!state.CheckParams(1, "SNN")) { return 0; }
+
+		STLString title = state.GetValue(1, "Titan");
+		int width = state.GetValue(2, 0);
+		int height = state.GetValue(3, 0);
+		float scale = state.GetValue(4, 1.0f);
+
+		if(width > 0 && height > 0 && scale > 0)
+		{
+			static_cast<Sim*>(AKUGetUserdata())->openWindow(title, width, height, scale);
+		}
+
+		return 0;
+	}
+
 	//Initialize AKU and plugins
 	Init mAppInitialize;
 	Init mModulesAppInitialize;
@@ -386,6 +432,7 @@ private:
 	bool mRunning;
 	int mWindowX;
 	int mWindowY;
+	float mViewScale;
 };
 
 Sim* createSim(int argc, char* argv[])

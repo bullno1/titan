@@ -36,6 +36,8 @@ int main(int argc, char* argv[])
 			running = false;
 			exitCode = 1;
 			break;
+		case ExitReason::Count:
+			break;
 		}
 	}
 
