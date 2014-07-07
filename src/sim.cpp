@@ -8,6 +8,8 @@
 #include <host-modules/aku_modules.h>
 #include <moai-core/headers.h>
 #include <moai-sim/headers.h>
+#include <FileWatcher/FileWatcher.h>
+#include <map>
 
 extern "C"
 {
@@ -55,7 +57,10 @@ public:
 	Init(InitFunc initFunc, ShutdownFunc shutdownFunc)
 		:mShutdownFunc(shutdownFunc)
 	{
-		initFunc();
+		if(initFunc)
+		{
+			initFunc();
+		}
 	}
 
 	~Init()
@@ -93,7 +98,7 @@ public:
 		:mErrorMsg(errorMsg)
 	{}
 
-	virtual ~LuaPanicException() {}
+	virtual ~LuaPanicException() throw() {}
 
 	virtual const char* what() const throw()
 	{
@@ -104,7 +109,7 @@ private:
 	STLString mErrorMsg;
 };
 
-class Sim
+class Sim: private FW::FileWatchListener
 {
 public:
 	Sim(int argc, char* argv[])
@@ -141,6 +146,7 @@ public:
 		//Initialize context
 		AKUContextWrapper<Sim> context(this);
 		AKUSetArgv(mArgv);
+		Init finalizer(NULL, finalize);
 
 		AKUModulesContextInitialize();
 		AKUModulesRunLuaAPIWrapper();
@@ -169,6 +175,7 @@ public:
 		luaL_Reg hostAddons[] = {
 			{ "restart", _restart },
 			{ "openWindow", _openWindow },
+			{ "addWatch", _addWatch },
 			{ NULL, NULL }
 		};
 		luaL_register(AKUGetLuaState(), "Titan", hostAddons);
@@ -233,6 +240,8 @@ public:
 		{
 			while(mRunning)
 			{
+				mFileWatcher.update();
+
 				SDL_Event event;
 				while(SDL_PollEvent(&event))
 					processEvent(event);
@@ -257,6 +266,44 @@ public:
 	}
 
 private:
+	static void finalize()
+	{
+		Sim* sim = static_cast<Sim*>(AKUGetUserdata());
+		// Clear watchers
+		for(FileListenerMap::iterator itr = sim->mFileListeners.begin(); itr != sim->mFileListeners.end(); ++itr)
+		{
+			sim->mFileWatcher.removeWatch(itr->first);
+			delete itr->second;
+		}
+		sim->mFileListeners.clear();
+	}
+
+	void handleFileAction(FW::WatchID id, const FW::String& dir, const FW::String& filename, FW::Action action)
+	{
+		Sim* sim = static_cast<Sim*>(AKUGetUserdata());
+		FileListenerMap::iterator itr = sim->mFileListeners.find(id);
+		if(itr != sim->mFileListeners.end())
+		{
+			MOAILuaState state(AKUGetLuaState());
+			itr->second->PushRef(state);
+
+			switch(action)
+			{
+				case FW::Actions::Add:
+					state.Push("add");
+					break;
+				case FW::Actions::Delete:
+					state.Push("delete");
+					break;
+				case FW::Actions::Modified:
+					state.Push("modified");
+					break;
+			}
+			state.Push(filename.c_str());
+			state.DebugCall(2, 0);
+		}
+	}
+
 	void openWindow(const char* title, int deviceWidth, int deviceHeight, int dpi)
 	{
 		if(mWindow) return;
@@ -402,6 +449,20 @@ private:
 		return 0;
 	}
 
+	static int _addWatch(lua_State* L)
+	{
+		MOAILuaState state(L);
+		if(!state.CheckParams(1, "SF")) { return 0; }
+
+		Sim* sim = static_cast<Sim*>(AKUGetUserdata());
+		FW::WatchID id = sim->mFileWatcher.addWatch(state.GetValue(1, ""), sim);
+		MOAILuaStrongRef* funcRef = new MOAILuaStrongRef();
+		funcRef->SetRef(state, 2);
+		sim->mFileListeners.insert(std::make_pair(id, funcRef));
+
+		return 0;
+	}
+
 	static int _openWindow(lua_State* L)
 	{
 		MOAILuaState state(L);
@@ -433,6 +494,9 @@ private:
 	int mWindowX;
 	int mWindowY;
 	float mViewScale;
+	FW::FileWatcher mFileWatcher;
+	typedef std::map<FW::WatchID, MOAILuaStrongRef*> FileListenerMap;
+	FileListenerMap mFileListeners;
 };
 
 Sim* createSim(int argc, char* argv[])
