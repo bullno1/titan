@@ -443,7 +443,7 @@ private:
 	static int _restart(lua_State* L)
 	{
 		Sim* sim = static_cast<Sim*>(AKUGetUserdata());
-		sim->mRunning = false;
+		sim->closeWindow();
 		sim->mExitReason = ExitReason::Restart;
 
 		return 0;
