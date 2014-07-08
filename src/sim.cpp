@@ -176,6 +176,7 @@ public:
 			{ "restart", _restart },
 			{ "openWindow", _openWindow },
 			{ "addWatch", _addWatch },
+			{ "removeWatch", _removeWatch },
 			{ NULL, NULL }
 		};
 		luaL_register(AKUGetLuaState(), "Titan", hostAddons);
@@ -459,6 +460,25 @@ private:
 		MOAILuaStrongRef* funcRef = new MOAILuaStrongRef();
 		funcRef->SetRef(state, 2);
 		sim->mFileListeners.insert(std::make_pair(id, funcRef));
+
+		state.Push(id);
+		return 1;
+	}
+
+	static int _removeWatch(lua_State* L)
+	{
+		MOAILuaState state(L);
+		if(!state.CheckParams(1, "N")) { return 0; }
+
+		Sim* sim = static_cast<Sim*>(AKUGetUserdata());
+		FW::WatchID watchId = state.GetValue(1, 0);
+		FileListenerMap::iterator itr = sim->mFileListeners.find(watchId);
+		if(itr != sim->mFileListeners.end())
+		{
+			sim->mFileWatcher.removeWatch(watchId);
+			sim->mFileListeners.erase(itr);
+			delete itr->second;
+		}
 
 		return 0;
 	}
