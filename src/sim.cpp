@@ -351,7 +351,7 @@ private:
 				AKUEnqueuePointerEvent(InputDevice::Main, MainSensor::Mouse, x, y);
 				if((event.motion.state & SDL_BUTTON_LMASK) > 0)
 				{
-					AKUEnqueueTouchEvent(InputDevice::Main, MainSensor::Touch, 0, true, event.motion.x, event.motion.y);
+					AKUEnqueueTouchEvent(InputDevice::Main, MainSensor::Touch, 0, true, x, y);
 				}
 			}
 			break;
